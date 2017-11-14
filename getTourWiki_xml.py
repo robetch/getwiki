@@ -18,13 +18,9 @@ except ImportError:
 
 
 #这部分目录的变量需要修改
-path = "E:\\study\\python\\html\\tour\\"
+path = "E:\\operation\\python\\html\\tour\\"
 urlfile = r'TourCities-201710_ja.xls'
-####中日韩各国启示行号 如英文的为：0 日文的为：2  韩文的为：1
-offset=1
-
-
-
+sheetNAME = r'中日韩'
 
 ENCODE = r'utf-8'
 interURL={
@@ -32,10 +28,21 @@ interURL={
 1:r'https://ko.wikipedia.org/wiki/',
 2:r'https://ja.wikipedia.org/wiki/'
 }
+lang={
+0:r'en',
+1:r'ko',
+2:r'ja'
+}
 
-urlhead = interURL[offset]
 
-print(urlhead)
+####中日韩各国启示行号 如英文的为：0 日文的为：2  韩文的为：1
+offset=0
+#如果是直接到日文，韩文的话，用这个判断。挡墙方法是直接通过英文的页面找到对应链接跳转
+#urlhead = interURL[offset]
+urlhead = interURL[0]
+
+
+#print(urlhead)
 ridlist = ['Gallery','See also','Notes','References','External links']
 
 def goRun():
@@ -45,12 +52,13 @@ def goRun():
     counpath = ""
     #while urlists[2] != "":
     while True:
+        
         urlists = geturllist(file,count,offset)
         if urlists == None:
             break;
         if urlists[2] == "":
             continue
-        
+        #print("test")
         tmppath = urlists[1].strip()
         citypath = urlists[2].strip()
         if tmppath != "":
@@ -60,8 +68,7 @@ def goRun():
         count += 4
 
 def getTourMain(url):
-    #book = createXml()
-    print(url)
+    #print(url)
     if url.strip() == "" :
         return None
     doc = dom.Document()
@@ -86,6 +93,30 @@ def getTourMain(url):
         print("Con't find url:" + url)
 
     return doc
+
+def getForeignUrl(url):
+    urllist = []
+    #开始做网页的页面抓取
+    html = getTourInfo(url)
+
+    if html != "" :
+    ##获得页面的数据标题信息
+        #findhtml = re.search(r'<h3 id="p-lang-label"><div.*?>([\s\S]*?)</div>',html,re.I|re.S|re.M)
+        try:
+            findhtml = re.search(r'<h3 id=\'p-lang-label\'>.*?(<ul>[\s\S]*?</ul>)',html,re.M|re.I|re.S)
+            #print(findhtml.group(1))
+            roothtml = ET.fromstring(findhtml.group(1))
+            for node in roothtml:
+                curlang = node[0].attrib["lang"]
+                #print(lang.values())
+                if curlang in lang.values():
+                    urllist.append(node[0].attrib["href"])
+                    #print(node[0].attrib["href"])
+        except :
+            print(url + " NOT found other language")
+
+    return urllist
+
 
 def getNoTocCont(html):
     root = dom.Document().createElement("root")
@@ -122,17 +153,30 @@ def getTocCont(tochtml,html):
             #nodeName = subh3[0][1].text
             #locHref = subh3[0].attrib["href"][1:]
             #h3node = createNode(locHref,html,nodeName)
-            h3node = createNode(subh3[0].attrib["href"][1:],html,subh3[0][1].text)
+
+            if subh3[0][1].text == None:
+                h3text = subh3[0][1][0].text
+            else:
+                h3text = subh3[0][1].text
+            h3node = createNode(subh3[0].attrib["href"][1:],html,h3text)
             h2node.appendChild(h3node)
             for subh4 in subh3.findall("./ul/li"):
                 if subh4[0][1].text in ridlist:
                     continue
-                h4node = createNode(subh4[0].attrib["href"][1:],html,subh4[0][1].text)
+                if subh4[0][1].text == None:
+                    h4text = subh4[0][1][0].text
+                else:
+                    h4text = subh4[0][1].text
+                h4node = createNode(subh4[0].attrib["href"][1:],html,h4text)
                 h3node.appendChild(h4node)
                 for subh5 in subh4.findall("./ul/li"):
                     if subh5[0][1].text in ridlist:
                         continue
-                    h5node = createNode(subh5[0].attrib["href"][1:],html,subh5[0][1].text)
+                    if subh5[0][1].text == None:
+                        h5text = subh5[0][1][0].text
+                    else:
+                        h5text = subh5[0][1].text
+                    h5node = createNode(subh5[0].attrib["href"][1:],html,h5text)
                     h4node.appendChild(h5node)
                 
         root.appendChild(h2node)
@@ -147,15 +191,19 @@ def createNode(locId,html,nodeName):
     #patternSee = re.compile(strtmp,re.M|re.I|re.S)
     patternSee = re.compile(strtmp,re.M|re.I)
     ptnDelTag = re.compile(r'</?\w+[^>]*>')
+    
 
     nodeDict={'name':nodeName}
     findhtml = patternSee.findall(html)    
 
     resTour = ""
+    #网页需要过滤掉的在这部分过滤
     if findhtml != None:
         resTour = findhtml[0][1]
         #print(resTour)
         resTour = ptnDelTag.sub("",resTour)
+        #过滤掉[1]这样的注释
+        resTour = re.sub(r'\[\d+\]',"",resTour)
         #print(resTour)
         resTour = re.sub(r'\t+',"",resTour)
         resTour = re.sub("\\n+","\\n",resTour)
@@ -237,7 +285,8 @@ def geturllist(file,rows,offset):
     try:
         workbook = xlrd.open_workbook(file)
         #根据sheet索引或者名称获取sheet内容
-        sheet = workbook.sheet_by_name("中日韩")
+        #sheet = workbook.sheet_by_name("中日韩")
+        sheet = workbook.sheet_by_name(sheetNAME)
         '''
         # 获取单元格内容
         print sheet.cell(1,0).value.encode('utf-8')
@@ -261,7 +310,10 @@ def geturllist(file,rows,offset):
             if i > 2 and urllist[i] != "":
                 urllist[i] = urlhead + request.quote(urllist[i])
 
-    except:
+    except xlrd.XLRDError:
+        print("XLS file cann't read!")
+        return None
+    except :
         return None
     return urllist
     
@@ -269,55 +321,76 @@ def writefile(countrypath,citypath,urllist):
     ulist = urllist
     curpath = path + "data\\" + countrypath + "\\" + citypath + "\\"
     if any(ulist):
-        for url in ulist:
-            if url.strip() == "":
+        for firsturl in ulist:
+            if firsturl.strip() == "":
                 continue
             #将页面中的文本进行抓取
-            xmlfile = url.split("/")[-1]+".xml"
-            #xmlfile = url.split("/")[-1]+".txt"
-            filename = curpath + request.unquote(xmlfile)
-            doc = getTourMain(url)
-            if doc != None:
-                if not os.path.exists(curpath):
-                    #print(curpath)
-                    os.makedirs(curpath)
-
-                with open(filename,'w+',encoding=ENCODE) as fp:
-                    #存成xml文件
-                    doc.writexml(fp, addindent="\t", newl="\n", encoding=ENCODE)
-                    
-                    #存成txt文件
-                    '''
-                    rstext = ""
-                    for node in doc.childNodes:
-                        for node1 in node.childNodes:
-                            #print(node1.nodeName)
-                            rstext += node1.nodeName + ":"
-                            for node2 in node1.childNodes:
-                                if node2.nodeType == 1:
-                                    #print(node2.nodeName)
-                                    rstext += node2.nodeName + ":"
-                                    for node3 in node2.childNodes:
-                                        #print(node3.data)
-                                        rstext += node3.data
-                                elif node2.nodeType == 3:
-                                    #print(node2.data)
-                                    rstext += node2.data
-                    fp.write(rstext)
-                    '''
-
-            else:
-                print(filename + ": can't catch DATA so don't create!")
             
+            print(firsturl)
+            ###获得网页中其他语言的网址链接
+            frnlist = getForeignUrl(firsturl)
+            ###把第一个英文的网页也加到这个列表中
+            frnlist.append(firsturl)
+            
+            #print(firsturl.split("/")[2].split(".")[0])
+            for url in frnlist:
+                xmlfile = url.split("/")[-1]+".xml"
+                #xmlfile = url.split("/")[-1]+".txt"
+                langpath = url.split("/")[2].split(".")[0] + "\\"
+                filename = curpath + langpath + request.unquote(xmlfile)
+                #print(url)
+                doc = getTourMain(url)
+                if doc != None:
+                    if not os.path.exists(curpath + langpath):
+                        #print(curpath)
+                        os.makedirs(curpath + langpath)
+
+                    with open(filename,'w+',encoding=ENCODE) as fp:
+                        #存成xml文件
+                        
+                        try:
+                            doc.writexml(fp, addindent="\t", newl="\n", encoding=ENCODE)
+                        except:
+                            print(url + " HAVE ERROR!")
+                            continue
+
+                        #存成txt文件
+                        '''
+                        rstext = ""
+                        for node in doc.childNodes:
+                            for node1 in node.childNodes:
+                                #print(node1.nodeName)
+                                rstext += node1.nodeName + ":"
+                                for node2 in node1.childNodes:
+                                    if node2.nodeType == 1:
+                                        rstext += node2.nodeName + ":"
+                                        for node3 in node2.childNodes:
+                                            if node3.nodeType == 1:
+                                              rstext += node3.nodeName + ":"
+                                              for node4 in node3.childNodes:
+                                                  if node4.nodeType == 3:
+                                                      rstext += node4.data
+                                            #print(node3.nodeName)
+                                            elif node3.nodeType == 3:
+                                                rstext += node3.data
+                                    elif node2.nodeType == 3:
+                                        #print(node2.data)
+                                        rstext += node2.data
+                        fp.write(rstext)
+                        '''
+    
+                else:
+                    print(filename + ": can't catch DATA so don't create!")
+                
             #开始对页面的图片进行下载
-            '''
-            piclist = getPicList(url)
+            
+            piclist = getPicList(firsturl)
             if piclist:
-                picpath = curpath + request.unquote(url.split("/")[-1])
+                picpath = curpath + "\\img\\" + request.unquote(url.split("/")[-1])
                 if not os.path.exists(picpath):
                     os.makedirs(picpath)
                 downloadfile(piclist,picpath)
-            '''
+            
 
 #这个脚本可以临时跑少量网页的数据
 def gotest():
@@ -326,21 +399,18 @@ def gotest():
     #name = r'Cloisonné'
     #url = 'https://en.wikipedia.org/wiki/' + name
     #print(urllib.request.quote(url))
-    #ulist = ['https://en.wikipedia.org/wiki/Beijing']
+    ulist = ['https://en.wikipedia.org/wiki/Harbin']
+    '''
     ulist = [
     'https://ja.wikipedia.org/wiki/%E6%96%B0%E5%A4%A9%E5%9C%B0',
     'https://ja.wikipedia.org/wiki/%E7%B4%AB%E7%A6%81%E5%9F%8E',
     'https://ja.wikipedia.org/wiki/%E4%BA%BA%E6%B0%91%E5%A4%A7%E4%BC%9A%E5%A0%82'
     ]
-    
+    '''
     writefile(counpath,citypath,ulist)
     
 
 if __name__ == "__main__" :
-    #url = r'https://en.wikivoyage.org/wiki/Beijing'
-    #url = r'https://en.wikivoyage.org/wiki/Tokyo'
-    #url = r'https://en.wikipedia.org/wiki/Badaling'
-    #url = r'https://en.wikipedia.org/wiki/Amerikamura'
     #getTourMain(url)
     #file = path + urlfile
     #geturllist(file,0)
